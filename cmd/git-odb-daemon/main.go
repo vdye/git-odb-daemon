@@ -72,16 +72,32 @@ func main() {
 					ipc.WriteErrorResponse(conn)
 					return
 				}
-				fmt.Printf("size: %d\n", objectInfo.Size())
-				fmt.Printf("object type: %s\n", objectInfo.Type().String())
+
+				// Populate the response
+				resp := ipc.GetOidResponse{
+					Key: [16]byte{'o', 'i', 'd'},
+				}
+				respOid, err := ipc.GitHashToObjectId(objectInfo.Hash())
+				if err != nil {
+					fmt.Printf("error: invalid hash '%s'\n", objectInfo.Hash())
+					ipc.WriteErrorResponse(conn)
+					return
+				}
+				resp.Oid = *respOid
+				resp.Size = uint32(objectInfo.Size())
+				resp.Type = int8(objectInfo.Type())
+				// TODO: fill in more fields, stream object content if needed
+
+				err = resp.WriteResponse(conn)
+				if err != nil {
+					fmt.Printf("error: railed to write response '%v'\n", err)
+				}
+				return
 			default:
 				fmt.Printf("error: unrecognized command '%s'\n", key)
 				ipc.WriteErrorResponse(conn)
 				return
 			}
-
-			// TEMPORARY: return error until we have a DB to connect to
-			ipc.WriteErrorResponse(conn)
 		}(conn)
 	}
 }
