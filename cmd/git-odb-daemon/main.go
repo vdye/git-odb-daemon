@@ -7,9 +7,9 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strconv"
 	"syscall"
 
+	"github.com/vdye/git-odb-daemon/internal/db"
 	"github.com/vdye/git-odb-daemon/internal/ipc"
 )
 
@@ -34,7 +34,11 @@ func main() {
 		os.Exit(1)
 	}()
 
-	// TODO: connect to the DB
+	// TODO: pick another database backend
+	db, err := db.NewGitDb(path)
+	if err != nil {
+		log.Fatalf("unable to open DB connection: %v\n", err)
+	}
 
 	for {
 		// Accept an incoming connection.
@@ -48,22 +52,36 @@ func main() {
 			defer conn.Close()
 			req, err := ipc.ReadRequest(conn)
 			if err != nil {
-				conn.Write([]byte("error"))
+				ipc.WriteErrorResponse(conn)
 				return
 			}
 
 			fmt.Printf("Request read: %s\n", req.Key())
-			if req.Key() == "oid" {
-				oidReq := req.(*ipc.GetOidRequest)
-				if oidReq != nil {
-					fmt.Printf("Requested OID: %s\n", oidReq.ObjectId.Hex())
-					fmt.Printf("Flags: %s\n", strconv.FormatUint(uint64(oidReq.Flags), 2))
-					fmt.Printf("WantContent: %d\n", oidReq.WantContent)
+			switch key := req.Key(); key {
+			case "oid":
+				oidReq, ok := req.(*ipc.GetOidRequest)
+				if !ok {
+					fmt.Printf("error: invalid request type for command '%s'\n", key)
+					ipc.WriteErrorResponse(conn)
+					return
 				}
+
+				objectInfo, err := db.ReadObject(oidReq.ObjectId.GitHash(), false)
+				if err != nil {
+					fmt.Printf("error: failed to read object '%s'\n", oidReq.ObjectId.Hex())
+					ipc.WriteErrorResponse(conn)
+					return
+				}
+				fmt.Printf("size: %d\n", objectInfo.Size())
+				fmt.Printf("object type: %s\n", objectInfo.Type().String())
+			default:
+				fmt.Printf("error: unrecognized command '%s'\n", key)
+				ipc.WriteErrorResponse(conn)
+				return
 			}
 
 			// TEMPORARY: return error until we have a DB to connect to
-			conn.Write([]byte("error"))
+			ipc.WriteErrorResponse(conn)
 		}(conn)
 	}
 }

@@ -3,6 +3,8 @@ package ipc
 import (
 	"bytes"
 	"encoding/hex"
+
+	"github.com/go-git/go-git/v5/plumbing"
 )
 
 type RequestSizeString [4]byte
@@ -24,6 +26,10 @@ func (oid *ObjectId) Hex() string {
 	} else {
 		return hex.EncodeToString(oid.Hash[:])
 	}
+}
+
+func (oid *ObjectId) GitHash() plumbing.Hash {
+	return plumbing.NewHash(oid.Hex())
 }
 
 type ObjectType uint8
