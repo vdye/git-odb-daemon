@@ -18,7 +18,6 @@ func (k *Key) ToString() string {
 type ObjectId struct {
 	Hash     [32]byte
 	HashAlgo int32
-	_        [4]byte
 }
 
 func (oid *ObjectId) Hex() string {

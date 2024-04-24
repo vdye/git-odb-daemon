@@ -4,45 +4,81 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"net"
 	"strconv"
+	"unsafe"
 )
 
 type IpcRequest interface {
 	Key() string
 }
 
-type GetOidRequest struct {
-	ObjectId
-	Flags       uint16
-	WantContent byte
+type EOF struct{}
+
+func (*EOF) Key() string {
+	return "EOF" // TODO: what if an IPC request is created with ID "EOF"
 }
 
-func (r *GetOidRequest) Key() string {
+type FlushPacket struct{}
+
+func (*FlushPacket) Key() string {
+	return "flush" // TODO: what if an IPC request is created with ID "flush"
+}
+
+type GetOidRequest struct {
+	ObjectId
+	Flags       uint32
+	WantContent uint8
+}
+
+func (*GetOidRequest) Key() string {
 	return "oid"
 }
 
 func ReadRequest(conn net.Conn) (IpcRequest, error) {
 	// First, read the size of the request
-	sizeStr := make([]byte, 4)
-	n, err := conn.Read(sizeStr)
-	if err != nil {
+	pktLine := make([]byte, 4)
+	n, err := io.ReadFull(conn, pktLine)
+	if err == io.EOF {
+		return &EOF{}, nil
+	} else if err != nil {
 		return nil, err
 	} else if n < 4 {
 		return nil, fmt.Errorf("could not read size")
 	}
 
-	reqSize, err := strconv.ParseUint(string(sizeStr), 16, 32)
+	reqSize, err := strconv.ParseUint(string(pktLine), 16, 32)
 	if err != nil {
 		return nil, err
 	}
 
+	// Flush packet
+	if reqSize == 0 {
+		return &FlushPacket{}, nil
+	}
+
+	reqSize -= 4
+	fmt.Printf("Request size: %d\n", reqSize)
+	fmt.Printf("Struct size %d\n", unsafe.Sizeof(GetOidRequest{})+16)
+
 	reqBuf := bytes.NewBuffer(make([]byte, reqSize))
-	n, err = conn.Read(reqBuf.Bytes())
+	n, err = io.ReadFull(conn, reqBuf.Bytes())
 	if err != nil {
 		return nil, err
 	} else if n < int(reqSize) {
-		return nil, fmt.Errorf("could not read request")
+		return nil, fmt.Errorf("request too small (expected %d, received %d)", reqSize, n)
+	}
+
+	// Look for flush packet
+	// First, read the size of the request
+	n, err = io.ReadFull(conn, pktLine)
+	if err != nil {
+		return nil, err
+	} else if n < 4 {
+		return nil, fmt.Errorf("could not read flush packet")
+	} else if string(pktLine) != "0000" {
+		return nil, fmt.Errorf("invalid packet line %s", string(pktLine))
 	}
 
 	var k Key
