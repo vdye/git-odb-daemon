@@ -93,3 +93,37 @@ func (resp *GetOidResponse) WriteResponse(conn net.Conn, contentReader io.ReadCl
 
 	return nil
 }
+
+type HashObjectResponse struct {
+	Key
+	Oid ObjectId
+}
+
+func (resp *HashObjectResponse) WriteResponse(conn net.Conn) error {
+	buf := &bytes.Buffer{}
+	err := binary.Write(buf, binary.LittleEndian, resp)
+	if err != nil {
+		return err
+	}
+
+	responseSize := buf.Len() + 4
+	fmt.Printf("Response size: %d\n", responseSize)
+	fmt.Printf("Struct size: %d\n", unsafe.Sizeof(HashObjectResponse{}))
+
+	_, err = conn.Write([]byte(fmt.Sprintf("%04x", responseSize)))
+	if err != nil {
+		return err
+	}
+
+	_, err = conn.Write(buf.Bytes())
+	if err != nil {
+		return err
+	}
+
+	_, err = conn.Write([]byte("0000")) // flush
+	if err != nil {
+		return err
+	}
+
+	return nil
+}

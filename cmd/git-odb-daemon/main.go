@@ -111,6 +111,41 @@ func main() {
 						fmt.Printf("error: failed to write response '%v'\n", err)
 						return
 					}
+				case "hash-object":
+					hashReq, ok := req.(*ipc.HashObjectRequest)
+					if !ok {
+						fmt.Printf("error: invalid request type for command '%s'\n", key)
+						ipc.WriteErrorResponse(conn)
+						return
+					}
+
+					if hashReq.Flags&1 == 0 || true { // TEMP: remove "true"
+						// Just hash, don't write to ODB
+						hash := plumbing.ComputeHash(plumbing.ObjectType(hashReq.Type), hashReq.Content)
+						if hash.IsZero() {
+							fmt.Printf("error: could not compute hash\n")
+							ipc.WriteErrorResponse(conn)
+							return
+						}
+
+						// Populate the response
+						resp := ipc.HashObjectResponse{}
+						copy(resp.Key[:len(key)], key)
+
+						respOid, err := ipc.GitHashToObjectId(hash)
+						if err != nil {
+							fmt.Printf("error: invalid hash '%s'\n", hash)
+							ipc.WriteErrorResponse(conn)
+							return
+						}
+						resp.Oid = *respOid
+
+						err = resp.WriteResponse(conn)
+						if err != nil {
+							fmt.Printf("error: failed to write response '%v'\n", err)
+							return
+						}
+					}
 				default:
 					fmt.Printf("error: unrecognized command '%s'\n", key)
 					ipc.WriteErrorResponse(conn)

@@ -36,6 +36,21 @@ func (*GetOidRequest) Key() string {
 	return "oid"
 }
 
+type hashObjectRequestInternal struct {
+	Type  int32
+	Flags uint32
+	Size  uint64
+}
+
+type HashObjectRequest struct {
+	hashObjectRequestInternal
+	Content []byte
+}
+
+func (*HashObjectRequest) Key() string {
+	return "hash-object"
+}
+
 func ReadRequest(conn net.Conn) (IpcRequest, error) {
 	// First, read the size of the request
 	pktLine := make([]byte, 4)
@@ -95,6 +110,23 @@ func ReadRequest(conn net.Conn) (IpcRequest, error) {
 			return nil, err
 		}
 		return &oidReq, nil
+	case "hash-object":
+		var internalReq hashObjectRequestInternal
+
+		// Read the fixed-size component of the buffer first
+		err = binary.Read(reqBuf, binary.LittleEndian, &internalReq)
+		if err != nil {
+			return nil, err
+		}
+
+		// Read the buffer to hash
+		// TODO: stream it
+		hashReq := &HashObjectRequest{
+			hashObjectRequestInternal: internalReq,
+		}
+		hashReq.Content = reqBuf.Bytes()[(reqBuf.Len() - int(hashReq.Size)):]
+
+		return hashReq, nil
 	default:
 		return nil, fmt.Errorf("unrecognized request '%s'", key)
 	}
