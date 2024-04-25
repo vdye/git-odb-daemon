@@ -22,22 +22,24 @@ func main() {
 	}
 
 	// Connect to socket
-	socket, err := net.Listen("unix", filepath.Join(path, "odb-over-ipc"))
+	socketPath := filepath.Join(path, "odb-over-ipc")
+	socket, err := net.Listen("unix", socketPath)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// TODO: pick another database backend
+	db := storage.NewFilesystemStorage(path)
 
 	// Cleanup the socket file.
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
-		os.Remove(path)
+		db.Close()
+		os.Remove(socketPath)
 		os.Exit(1)
 	}()
-
-	// TODO: pick another database backend
-	db := storage.NewFilesystemStorage(path)
 
 	for {
 		// Accept an incoming connection.
