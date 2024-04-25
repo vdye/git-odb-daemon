@@ -121,32 +121,63 @@ func main() {
 						return
 					}
 
-					if hashReq.Flags&1 == 0 || true { // TEMP: remove "true"
+					obj := db.NewEncodedObject()
+					obj.SetType(plumbing.ObjectType(hashReq.Type))
+					obj.SetSize(int64(hashReq.Size))
+					objWriter, err := obj.Writer()
+					if err != nil {
+						fmt.Printf("error: could not write object\n")
+						ipc.WriteErrorResponse(conn)
+						return
+					}
+
+					n, err := objWriter.Write(hashReq.Content)
+					if err != nil {
+						fmt.Printf("error: failed to read object contents: %v\n", err)
+						ipc.WriteErrorResponse(conn)
+						return
+					} else if n != int(hashReq.Size) {
+						fmt.Printf("error: incorrect write size (expected %d, got %d)\n", hashReq.Size, n)
+						ipc.WriteErrorResponse(conn)
+						return
+					}
+
+					var oid plumbing.Hash
+					if hashReq.Flags&1 == 0 {
 						// Just hash, don't write to ODB
-						hash := plumbing.ComputeHash(plumbing.ObjectType(hashReq.Type), hashReq.Content)
-						if hash.IsZero() {
-							fmt.Printf("error: could not compute hash\n")
+						oid = obj.Hash()
+					} else {
+						// Write the object to storage
+						oid, err = db.SetEncodedObject(obj)
+						if err != nil {
+							fmt.Printf("error: failed to write object: %v\n", err)
 							ipc.WriteErrorResponse(conn)
 							return
 						}
+					}
 
-						// Populate the response
-						resp := ipc.HashObjectResponse{}
-						copy(resp.Key[:len(key)], key)
+					if oid.IsZero() {
+						fmt.Printf("error: could not compute hash\n")
+						ipc.WriteErrorResponse(conn)
+						return
+					}
 
-						respOid, err := ipc.GitHashToObjectId(hash)
-						if err != nil {
-							fmt.Printf("error: invalid hash '%s'\n", hash)
-							ipc.WriteErrorResponse(conn)
-							return
-						}
-						resp.Oid = *respOid
+					// Populate the response
+					resp := ipc.HashObjectResponse{}
+					copy(resp.Key[:len(key)], key)
 
-						err = resp.WriteResponse(conn)
-						if err != nil {
-							fmt.Printf("error: failed to write response '%v'\n", err)
-							return
-						}
+					respOid, err := ipc.GitHashToObjectId(oid)
+					if err != nil {
+						fmt.Printf("error: invalid hash '%s'\n", oid)
+						ipc.WriteErrorResponse(conn)
+						return
+					}
+					resp.Oid = *respOid
+
+					err = resp.WriteResponse(conn)
+					if err != nil {
+						fmt.Printf("error: failed to write response '%v'\n", err)
+						return
 					}
 				default:
 					fmt.Printf("error: unrecognized command '%s'\n", key)
