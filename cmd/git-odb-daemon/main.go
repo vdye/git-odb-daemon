@@ -16,9 +16,17 @@ import (
 )
 
 func main() {
+	if len(os.Args) < 2 || len(os.Args) > 3 {
+		log.Fatal("usage: git-odb-daemon <git-dir> [<connection-string>]")
+	}
 	path, err := filepath.Abs(os.Args[1])
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	connectionString := ""
+	if len(os.Args) == 3 {
+		connectionString = os.Args[2]
 	}
 
 	// Connect to socket
@@ -29,7 +37,15 @@ func main() {
 	}
 
 	// TODO: pick another database backend
-	db := storage.NewFilesystemStorage(path)
+	var db storage.GitStorage
+	if connectionString != "" {
+		db, err = storage.NewGremlinStorage(connectionString)
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		db = storage.NewFilesystemStorage(path)
+	}
 
 	// Cleanup the socket file.
 	c := make(chan os.Signal, 1)

@@ -5,10 +5,8 @@ import (
 	"path/filepath"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/storer"
-	"github.com/go-git/go-git/v5/storage"
 )
 
 func NewPebbleStorage(path string) (GitStorage, error) {
@@ -26,10 +24,6 @@ type PebbleStorage struct {
 
 	// Everything else (nil for now, since we shouldn't be using any of them)
 	storer.ReferenceStorer
-	storer.ShallowStorer
-	storer.IndexStorer
-	config.ConfigStorer
-	storage.ModuleStorer
 }
 
 func (s *PebbleStorage) Close() error {
