@@ -92,7 +92,7 @@ func main() {
 
 					objectInfo, err := db.EncodedObject(plumbing.AnyObject, oidReq.ObjectId.GitHash())
 					if err != nil {
-						fmt.Printf("error: failed to read object '%s'\n", oidReq.ObjectId.Hex())
+						fmt.Printf("error: failed to read object '%s': %v\n", oidReq.ObjectId.Hex(), err)
 						ipc.WriteErrorResponse(conn)
 						return
 					}
@@ -103,7 +103,7 @@ func main() {
 					}
 					respOid, err := ipc.GitHashToObjectId(objectInfo.Hash())
 					if err != nil {
-						fmt.Printf("error: invalid hash '%s'\n", objectInfo.Hash())
+						fmt.Printf("error: invalid hash '%s': %v\n", objectInfo.Hash(), err)
 						ipc.WriteErrorResponse(conn)
 						return
 					}
@@ -116,7 +116,7 @@ func main() {
 					if oidReq.WantContent != 0 {
 						contentReader, err = objectInfo.Reader()
 						if err != nil {
-							fmt.Printf("error: failed to get object reader")
+							fmt.Printf("error: failed to get object reader: %v", err)
 							ipc.WriteErrorResponse(conn)
 							return
 						}
@@ -126,7 +126,7 @@ func main() {
 
 					err = resp.WriteResponse(conn, contentReader)
 					if err != nil {
-						fmt.Printf("error: failed to write response '%v'\n", err)
+						fmt.Printf("error: failed to write response: %v\n", err)
 						return
 					}
 				case "hash-object":
@@ -142,7 +142,7 @@ func main() {
 					obj.SetSize(int64(hashReq.Size))
 					objWriter, err := obj.Writer()
 					if err != nil {
-						fmt.Printf("error: could not write object\n")
+						fmt.Printf("error: could not write object: %v\n", err)
 						ipc.WriteErrorResponse(conn)
 						return
 					}
@@ -184,7 +184,7 @@ func main() {
 
 					respOid, err := ipc.GitHashToObjectId(oid)
 					if err != nil {
-						fmt.Printf("error: invalid hash '%s'\n", oid)
+						fmt.Printf("error: invalid hash '%s': %v\n", oid, err)
 						ipc.WriteErrorResponse(conn)
 						return
 					}

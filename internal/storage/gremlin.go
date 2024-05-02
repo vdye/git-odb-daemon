@@ -6,6 +6,7 @@ import (
 
 	gremlin "github.com/apache/tinkerpop/gremlin-go/v3/driver"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/filemode"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/storer"
 )
@@ -103,7 +104,12 @@ func (s *GremlinStorage) SetEncodedObject(obj plumbing.EncodedObject) (plumbing.
 		}
 
 		// Write the tree
-		v, err := query.Next()
+		res, err := query.Next()
+		if err != nil {
+			return plumbing.ZeroHash, err
+		}
+
+		v, err := res.GetVertex()
 		if err != nil {
 			return plumbing.ZeroHash, err
 		}
@@ -111,9 +117,10 @@ func (s *GremlinStorage) SetEncodedObject(obj plumbing.EncodedObject) (plumbing.
 		// Connect to tree entries
 		for _, ent := range tree.Entries {
 			_, err = g.
-				V(v).As("root").
+				V(v.Id).As("root").
 				V().Has("oid", ent.Hash.String()).As("entry").
-				AddE(ent.Name, "mode", ent.Mode.String()).Next()
+				AddE(ent.Name).From("root").To("entry").
+				Property("mode", ent.Mode.String()).Next()
 			if err != nil {
 				return plumbing.ZeroHash, err
 			}
@@ -177,35 +184,54 @@ func (s *GremlinStorage) EncodedObject(objType plumbing.ObjectType, oid plumbing
 		return nil, fmt.Errorf("not implemented")
 	case plumbing.TreeObject:
 		// Get all the edges and vertices connected to them
-		// t := &object.Tree{}
+		t := &object.Tree{}
 
-		query := g.V(v.Id).OutE().As("entry").OtherV().As("object").Select("entry", "object")
-		var keepGoing bool
-		for keepGoing, err = query.HasNext(); keepGoing; {
-			res, err := query.Next()
-			if err != nil {
-				return nil, err
-			}
+		query := g.V(v.Id).
+			OutE().As("e").
+			OtherV().As("v").
+			Select("e").ElementMap().As("entry").
+			Select("v").Values("oid").As("object").
+			Select("entry", "object")
 
+		results, err := query.ToList()
+		if err != nil {
+			return nil, err
+		}
+
+		for _, res := range results {
 			resMap, ok := res.Data.(map[interface{}]interface{})
 			if !ok {
 				return nil, fmt.Errorf("could not get tree entry")
 			}
-			_, ok = resMap["entry"].(*gremlin.Edge)
+			ent, ok := resMap["entry"].(map[interface{}]interface{})
 			if !ok {
 				return nil, fmt.Errorf("could not get tree entry edge")
 			}
 
-			_, ok = resMap["object"].(*gremlin.Edge)
+			entObj, ok := resMap["object"].(string)
 			if !ok {
 				return nil, fmt.Errorf("could not get tree entry object")
 			}
+
+			mode, err := filemode.New(ent["mode"].(string))
+			if err != nil {
+				return nil, err
+			}
+
+			t.Entries = append(t.Entries, object.TreeEntry{
+				Name: ent["label"].(string),
+				Mode: mode,
+				Hash: plumbing.NewHash(entObj),
+			})
 		}
 
+		var obj plumbing.MemoryObject
+		err = t.Encode(&obj)
 		if err != nil {
 			return nil, err
 		}
-		return nil, fmt.Errorf("not implemented")
+
+		return &obj, nil
 	case plumbing.BlobObject:
 		// Get content
 		res, err = g.V(v.Id).Values("content").Next()
